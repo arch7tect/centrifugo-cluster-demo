@@ -1,0 +1,113 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  centrifugo_node1:
+    image: centrifugo/centrifugo:v5
+    container_name: centrifugo_node1
+    restart: unless-stopped
+    depends_on:
+      - redis
+    ports:
+      - "8100:8100"
+    volumes:
+      - ./centrifugo/config_node1.json:/centrifugo/config.json:ro
+    command: >
+      centrifugo
+      --config=/centrifugo/config.json
+      --port=8100
+      --admin
+    environment:
+      CENTRIFUGO_SECRET: "super-secret-jwt-key"
+      CENTRIFUGO_API_KEY: "super-secret-api-key"
+
+  centrifugo_node2:
+    image: centrifugo/centrifugo:v5
+    container_name: centrifugo_node2
+    restart: unless-stopped
+    depends_on:
+      - redis
+    ports:
+      - "8200:8200"
+    volumes:
+      - ./centrifugo/config_node2.json:/centrifugo/config.json:ro
+    command: >
+      centrifugo
+      --config=/centrifugo/config.json
+      --port=8200
+      --admin
+    environment:
+      CENTRIFUGO_SECRET: "super-secret-jwt-key"
+      CENTRIFUGO_API_KEY: "super-secret-api-key"
+
+  granian1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: granian1
+    restart: unless-stopped
+    depends_on:
+      - centrifugo_node1
+      - centrifugo_node2
+    ports:
+      - "8001:8001"
+    volumes:
+      - .:/app
+    command: >
+      granian emulator.server:app
+      --interface asgi
+      --host 0.0.0.0
+      --port 8001
+      --workers 2
+    environment:
+      CENTRIFUGO_API_URL: "http://haproxy:9001/api"
+      CENTRIFUGO_API_KEY: "super-secret-api-key"
+
+  granian2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: granian2
+    restart: unless-stopped
+    depends_on:
+      - centrifugo_node1
+      - centrifugo_node2
+    ports:
+      - "8002:8002"
+    volumes:
+      - .:/app
+    command: >
+      granian emulator.server:app
+      --interface asgi
+      --host 0.0.0.0
+      --port 8002
+      --workers 2
+    environment:
+      CENTRIFUGO_API_URL: "http://haproxy:9001/api"
+      CENTRIFUGO_API_KEY: "super-secret-api-key"
+
+  haproxy:
+    image: haproxy:3.1-alpine
+    container_name: haproxy
+    restart: unless-stopped
+    depends_on:
+      - granian1
+      - granian2
+      - centrifugo_node1
+      - centrifugo_node2
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+      - "8404:8404"
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+
+volumes:
+  redis_data:

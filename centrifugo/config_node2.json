@@ -1,0 +1,25 @@
+{"admin": true,
+  "admin_password": "admin",
+  "admin_secret": "admin-secret",
+
+  "api_key": "super-secret-api-key",
+
+  "token_hmac_secret_key": "super-secret-jwt-key",
+
+  "allowed_origins": [
+    "*"
+  ],
+
+  "engine": "redis",
+  "redis_address": "redis:6379",
+
+  "log_level": "info",
+  "grpc_api": false,
+
+  "allow_subscribe_for_client": true,
+  "namespaces": [
+    {
+      "name": "session"
+    }
+  ]
+}

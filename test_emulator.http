@@ -1,0 +1,51 @@
+# Test emulator endpoints via HAProxy
+
+### Health check
+GET http://localhost:9000/health
+Accept: application/json
+
+###
+
+### Run LLM emulation (generates lorem ipsum, streams via WebSocket)
+POST http://localhost:9000/api/run
+Content-Type: application/json
+
+{
+  "session_id": "test-session-123",
+  "question": "What is the meaning of life?"
+}
+
+###
+
+### Direct access to Granian instance 1
+POST http://localhost:8001/api/run
+Content-Type: application/json
+
+{
+  "session_id": "test-session-456",
+  "question": "Tell me about the universe"
+}
+
+###
+
+### Direct access to Granian instance 2
+POST http://localhost:8002/api/run
+Content-Type: application/json
+
+{
+  "session_id": "test-session-789",
+  "question": "Explain quantum mechanics"
+}
+
+###
+
+### HAProxy stats page (open in browser)
+# http://localhost:8404/stats
+
+### Centrifugo Node 1 Admin UI (open in browser)
+# http://localhost:8100/
+# Credentials: admin/admin
+
+### Centrifugo Node 2 Admin UI (open in browser)
+# http://localhost:8200/
+# Credentials: admin/admin
