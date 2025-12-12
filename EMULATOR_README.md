@@ -2,10 +2,12 @@
 
 Stateless LLM response emulator using Centrifugo cluster for WebSocket streaming.
 
+Available in both **Python** and **TypeScript** implementations!
+
 ## Architecture
 
 ```
-Python Clients (asyncio)
+Python/TypeScript Clients
     ↓
 HAProxy Load Balancer
     ├─→ HTTP (port 9000) → Granian FastAPI servers (2 instances)
@@ -20,12 +22,18 @@ HAProxy Load Balancer
 - HAProxy load balancing (round-robin for HTTP, least-conn for WebSocket)
 - Comprehensive statistics: throughput, latency percentiles (p50/p95/p99), errors
 - Lorem ipsum text generation for realistic LLM streaming
+- **Dual implementations**: Python (asyncio) and TypeScript (Node.js)
 
 ## Quick Start
 
-### Simple Start (default: 10 clients, 5 cycles)
+### Python Client (default: 10 clients, 5 cycles)
 ```bash
 ./start_emulator.sh
+```
+
+### TypeScript Client
+```bash
+./run_typescript_emulator.sh
 ```
 
 ### Custom Configuration
@@ -74,13 +82,13 @@ HAProxy Load Balancer
 docker-compose up -d
 ```
 
-### Run Load Test
-```bash
-uv run python run_emulator.py --clients 10 --cycles 5
-```
+### Python Client
 
-### Available Options
 ```bash
+# Run load test
+uv run python run_emulator.py --clients 10 --cycles 5
+
+# Available options
 python run_emulator.py --help
 
 Options:
@@ -92,6 +100,26 @@ Options:
   --delay SECONDS      Token delay in seconds (default: 0.01)
   --max-concurrent N   Max concurrent clients (default: 50)
 ```
+
+### TypeScript Client
+
+```bash
+# Run load test
+cd typescript-client
+npm start -- --clients 10 --cycles 5
+
+# Available options
+npm start -- --help
+
+Options:
+  --clients N          Number of clients (default: 10)
+  --cycles N           Cycles per client (default: 5)
+  --length N           Response length in words (default: 100)
+  --delay SECONDS      Token delay in seconds (default: 0.01)
+  --max-concurrent N   Max concurrent clients (default: 50)
+```
+
+For more details on TypeScript implementation, see [typescript-client/README.md](typescript-client/README.md)
 
 ## Service Endpoints
 

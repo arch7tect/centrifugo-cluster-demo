@@ -30,6 +30,13 @@ env/
 .uv/
 uv.lock
 
+# TypeScript/Node.js
+node_modules/
+package-lock.json
+*.tsbuildinfo
+dist/
+build/
+
 # IDEs
 .vscode/
 .idea/
