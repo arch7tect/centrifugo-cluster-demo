@@ -72,15 +72,16 @@ npm start
 
 - **Runtime**: Node.js with TypeScript via `tsx`
 - **WebSocket**: `ws` library (compatible with Centrifugo)
-- **HTTP**: Native `fetch` API
-- **JWT**: `jsonwebtoken` library
+- **HTTP**: Native `fetch` API for REST API calls
+- **Session Management**: REST API endpoints for session lifecycle
+- **Authentication**: Server-generated JWT tokens
 
 ### Key Components
 
 1. **src/client.ts** - EmulatorClient class
-   - WebSocket connection and message handling
-   - JWT token generation
-   - Statistics collection
+   - REST API session creation/closure
+   - WebSocket connection (receive-only with minimal connect command)
+   - Message handling and statistics collection
 
 2. **src/statistics.ts** - Statistics classes
    - ClientStats: per-client metrics
@@ -97,6 +98,13 @@ npm start
    - Environment variable support
 
 5. **src/main.ts** - Entry point with graceful shutdown
+
+### Session Lifecycle
+
+1. **Create**: `POST /api/sessions/create` returns `{session_id, token}`
+2. **Connect**: Open WebSocket with JWT token, send minimal connect command
+3. **Stream**: Receive tokens via WebSocket push messages (no client sends)
+4. **Close**: `DELETE /api/sessions/{session_id}` and close WebSocket
 
 ### Percentile Calculation
 
@@ -127,7 +135,8 @@ Both implementations provide identical functionality:
 |---------|--------|------------|
 | WebSocket | `websockets` | `ws` |
 | HTTP Client | `httpx` | `fetch` |
-| JWT | `pyjwt` | `jsonwebtoken` |
+| Session Management | REST API | REST API |
+| JWT Generation | Server-side | Server-side |
 | Async | `asyncio` | Native Promises |
 | Percentiles | `numpy` | Custom implementation |
 | Performance | ✅ | ✅ |

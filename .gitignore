@@ -67,4 +67,6 @@ htmlcov/
 # Temporary files
 *.tmp
 *.bak
-/CLAUDE.md
+
+# Development guidelines
+CLAUDE.md
