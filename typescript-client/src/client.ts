@@ -1,12 +1,11 @@
 import WebSocket from 'ws';
-import jwt from 'jsonwebtoken';
 import type { EmulatorConfig } from './config';
 import { ClientStats } from './statistics';
 
 export class EmulatorClient {
   private clientId: number;
   private config: EmulatorConfig;
-  private sessionId: string;
+  private sessionId: string = '';
   private ws: WebSocket | null = null;
   private stats: ClientStats;
   private tokenQueue: string[] = [];
@@ -17,27 +16,25 @@ export class EmulatorClient {
   constructor(clientId: number, config: EmulatorConfig) {
     this.clientId = clientId;
     this.config = config;
-    this.sessionId = crypto.randomUUID();
-    this.stats = new ClientStats(clientId, this.sessionId);
+    this.stats = new ClientStats(clientId, '');
     this.donePromise = new Promise((resolve) => {
       this.doneResolve = resolve;
     });
   }
 
-  private generateToken(channel: string): string {
-    const payload = {
-      sub: `client-${this.clientId}`,
-      exp: Math.floor(Date.now() / 1000) + 3600,
-      channels: [channel]
-    };
-    return jwt.sign(payload, this.config.jwtSecret, { algorithm: 'HS256' });
-  }
-
   async connect(): Promise<boolean> {
     try {
-      const token = this.generateToken(`session:${this.sessionId}`);
-      const wsUrl = `${this.config.haproxyWsUrl}/connection/websocket`;
+      // Create session via REST API
+      const response = await fetch(`${this.config.haproxyHttpUrl}/api/sessions/create`, {
+        method: 'POST'
+      });
+      const data = await response.json();
+      this.sessionId = data.session_id;
+      const token = data.token;
+      this.stats.sessionId = this.sessionId;
 
+      // Open WebSocket
+      const wsUrl = `${this.config.haproxyWsUrl}/connection/websocket`;
       this.ws = await new Promise<WebSocket>((resolve, reject) => {
         const ws = new WebSocket(wsUrl, {
           protocol: 'json'
@@ -57,6 +54,7 @@ export class EmulatorClient {
         });
       });
 
+      // Send minimal connect command (required by Centrifugo)
       this.ws.send(JSON.stringify({
         id: 1,
         connect: { token }
@@ -70,26 +68,14 @@ export class EmulatorClient {
         this.ws?.on('message', handler);
       });
 
-      this.ws.send(JSON.stringify({
-        id: 2,
-        subscribe: { channel: `session:${this.sessionId}` }
-      }));
-
-      await new Promise<void>((resolve) => {
-        const handler = (data: Buffer) => {
-          this.ws?.off('message', handler);
-          resolve();
-        };
-        this.ws?.on('message', handler);
-      });
-
+      // Server already subscribed us via API, so NO subscribe command needed!
       this.setupWebSocketHandlers();
 
       console.log(`Client connected successfully. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
       return true;
 
     } catch (error) {
-      console.error(`Client connection failed. [client_id=${this.clientId}, session_id=${this.sessionId}, error=${(error as Error).message}]`);
+      console.error(`Client connection failed. [client_id=${this.clientId}, error=${(error as Error).message}]`);
       this.stats.connectionErrors++;
       return false;
     }
@@ -120,9 +106,7 @@ export class EmulatorClient {
           }
         }
 
-        if (message.ping) {
-          this.ws?.send(JSON.stringify({}));
-        }
+        // NO ping/pong handling - client never sends!
 
       } catch (error) {
         console.error(`WebSocket message parse error. [client_id=${this.clientId}, session_id=${this.sessionId}, error=${(error as Error).message}]`);
@@ -212,6 +196,18 @@ export class EmulatorClient {
   }
 
   async disconnect(): Promise<void> {
+    // Close session via REST API
+    if (this.sessionId) {
+      try {
+        await fetch(`${this.config.haproxyHttpUrl}/api/sessions/${this.sessionId}`, {
+          method: 'DELETE'
+        });
+      } catch (error) {
+        console.warn(`Failed to close session. [session_id=${this.sessionId}, error=${(error as Error).message}]`);
+      }
+    }
+
+    // Close WebSocket
     if (this.ws) {
       this.ws.close();
       this.ws = null;

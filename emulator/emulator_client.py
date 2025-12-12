@@ -2,9 +2,7 @@ import asyncio
 import json
 import logging
 import time
-import uuid
 from typing import Optional
-import jwt
 import httpx
 import websockets
 
@@ -19,57 +17,49 @@ class EmulatorClient:
     def __init__(self, client_id: int, config: EmulatorConfig):
         self.client_id = client_id
         self.config = config
-        self.session_id = str(uuid.uuid4())
+        self.session_id: Optional[str] = None
         self.ws: Optional[websockets.WebSocketClientProtocol] = None
         self.http_client: Optional[httpx.AsyncClient] = None
-        self.stats = ClientStats(client_id=client_id, session_id=self.session_id)
+        self.stats = ClientStats(client_id=client_id, session_id="")
         self.token_queue: asyncio.Queue = asyncio.Queue()
         self.done_event = asyncio.Event()
         self.receive_task: Optional[asyncio.Task] = None
 
-    def generate_token(self, channel: str) -> str:
-        payload = {
-            "sub": f"client-{self.client_id}",
-            "exp": int(time.time()) + 3600,
-            "channels": [channel]
-        }
-        return jwt.encode(payload, self.config.jwt_secret, algorithm="HS256")
-
     async def connect(self):
         try:
-            token = self.generate_token(channel=f"session:{self.session_id}")
+            # Create HTTP client first
+            self.http_client = httpx.AsyncClient(
+                base_url=self.config.haproxy_http_url,
+                timeout=self.config.request_timeout
+            )
 
+            # Create session via REST API
+            response = await self.http_client.post("/api/sessions/create")
+            data = response.json()
+            self.session_id = data["session_id"]
+            token = data["token"]
+            self.stats.session_id = self.session_id
+
+            # Open WebSocket
             ws_url = f"{self.config.haproxy_ws_url}/connection/websocket"
             self.ws = await asyncio.wait_for(
                 websockets.connect(ws_url, subprotocols=["json"]),
                 timeout=self.config.connection_timeout
             )
 
-            # Send connect command
+            # Send minimal connect command (required by Centrifugo)
             await self.ws.send(json.dumps({
                 "id": 1,
                 "connect": {"token": token}
             }))
-            reply = await self.ws.recv()
-            logger.debug(f"Connect reply received. [client_id=%s, session_id=%s]", self.client_id, self.session_id)
+            await self.ws.recv()
 
-            # Subscribe to personal channel
-            await self.ws.send(json.dumps({
-                "id": 2,
-                "subscribe": {"channel": f"session:{self.session_id}"}
-            }))
-            sub_reply = await self.ws.recv()
-            logger.debug(f"Subscribe reply received. [client_id=%s, session_id=%s]", self.client_id, self.session_id)
+            # Server already subscribed us via API, so NO subscribe command needed!
             logger.info(f"Client connected successfully. [client_id=%s, session_id=%s]", self.client_id, self.session_id)
-
-            self.http_client = httpx.AsyncClient(
-                base_url=self.config.haproxy_http_url,
-                timeout=self.config.request_timeout
-            )
-
             return True
+
         except Exception as e:
-            logger.error(f"Client connection failed. [client_id=%s, session_id=%s, error=%s]", self.client_id, self.session_id, e)
+            logger.error(f"Client connection failed. [client_id=%s, error=%s]", self.client_id, e)
             self.stats.connection_errors += 1
             return False
 
@@ -92,9 +82,7 @@ class EmulatorClient:
                     if push_data.get("done"):
                         self.done_event.set()
 
-                # Respond to pings
-                elif "ping" in data:
-                    await self.ws.send(json.dumps({}))
+                # NO ping/pong handling - client never sends!
 
         except websockets.exceptions.ConnectionClosed:
             logger.debug(f"WebSocket connection closed. [client_id=%s, session_id=%s]", self.client_id, self.session_id)
@@ -151,14 +139,26 @@ class EmulatorClient:
             return None
 
     async def disconnect(self):
+        # Close session via REST API
+        if self.http_client and self.session_id:
+            try:
+                await self.http_client.delete(f"/api/sessions/{self.session_id}")
+            except Exception as e:
+                logger.warning(f"Failed to close session. [session_id=%s, error=%s]", self.session_id, e)
+
+        # Cancel receive task
         if self.receive_task:
             self.receive_task.cancel()
             try:
                 await self.receive_task
             except asyncio.CancelledError:
                 pass
+
+        # Close HTTP client
         if self.http_client:
             await self.http_client.aclose()
+
+        # Close WebSocket
         if self.ws:
             await self.ws.close()
 
