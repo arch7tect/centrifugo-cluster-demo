@@ -1,3 +1,7 @@
+import { getLogger } from './logger';
+
+const logger = getLogger('emulator.statistics');
+
 export class ClientStats {
   clientId: number;
   sessionId: string;
@@ -118,24 +122,23 @@ export class AggregatedStats {
   }
 
   printReport(): void {
-    console.log('\n');
-    console.log('LOAD TEST RESULTS');
-    console.log('================================================================================');
-    console.log(`Test completed. [total_clients=${this.totalClients}, total_cycles=${this.totalCycles}, duration=${this.totalDuration.toFixed(2)}s]`);
-    console.log('');
-    console.log('THROUGHPUT:');
-    console.log(`  [requests_per_sec=${this.requestsPerSecond.toFixed(2)}, tokens_per_sec=${this.tokensPerSecond.toFixed(2)}, cycles_per_sec=${this.cyclesPerSecond.toFixed(2)}]`);
-    console.log('');
-    console.log('REQUEST LATENCY (ms):');
-    console.log(`  [p50=${this.requestLatencyP50.toFixed(2)}, p95=${this.requestLatencyP95.toFixed(2)}, p99=${this.requestLatencyP99.toFixed(2)}, max=${this.requestLatencyMax.toFixed(2)}]`);
-    console.log('');
-    console.log('TOKEN LATENCY (ms):');
-    console.log(`  [p50=${this.tokenLatencyP50.toFixed(2)}, p95=${this.tokenLatencyP95.toFixed(2)}, p99=${this.tokenLatencyP99.toFixed(2)}]`);
-    console.log('');
-    console.log('CONNECTIONS:');
-    console.log(`  [successful=${this.successfulConnections}, failed=${this.failedConnections}, total_errors=${this.totalErrors}, reconnections=${this.totalReconnections}]`);
-    console.log('================================================================================');
-    console.log('');
+    logger.info('================================================================================');
+    logger.info('LOAD TEST RESULTS');
+    logger.info('================================================================================');
+    logger.info(`Test completed. [total_clients=${this.totalClients}, total_cycles=${this.totalCycles}, duration=${this.totalDuration.toFixed(2)}s]`);
+    logger.info('');
+    logger.info('THROUGHPUT:');
+    logger.info(`  [requests_per_sec=${this.requestsPerSecond.toFixed(2)}, tokens_per_sec=${this.tokensPerSecond.toFixed(2)}, cycles_per_sec=${this.cyclesPerSecond.toFixed(2)}]`);
+    logger.info('');
+    logger.info('REQUEST LATENCY (ms):');
+    logger.info(`  [p50=${this.requestLatencyP50.toFixed(2)}, p95=${this.requestLatencyP95.toFixed(2)}, p99=${this.requestLatencyP99.toFixed(2)}, max=${this.requestLatencyMax.toFixed(2)}]`);
+    logger.info('');
+    logger.info('TOKEN LATENCY (ms):');
+    logger.info(`  [p50=${this.tokenLatencyP50.toFixed(2)}, p95=${this.tokenLatencyP95.toFixed(2)}, p99=${this.tokenLatencyP99.toFixed(2)}]`);
+    logger.info('');
+    logger.info('CONNECTIONS:');
+    logger.info(`  [successful=${this.successfulConnections}, failed=${this.failedConnections}, total_errors=${this.totalErrors}, reconnections=${this.totalReconnections}]`);
+    logger.info('================================================================================');
   }
 }
 

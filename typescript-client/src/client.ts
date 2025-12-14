@@ -1,6 +1,9 @@
 import WebSocket from 'ws';
 import type { EmulatorConfig } from './config';
 import { ClientStats } from './statistics';
+import { getLogger } from './logger';
+
+const logger = getLogger('emulator.emulator_client');
 
 export class EmulatorClient {
   private clientId: number;
@@ -75,11 +78,11 @@ export class EmulatorClient {
       // Server already subscribed us via API, so NO subscribe command needed!
       this.setupWebSocketHandlers();
 
-      console.log(`Client connected successfully. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
+      logger.info(`Client connected successfully. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
       return true;
 
     } catch (error) {
-      console.error(`Client connection failed. [client_id=${this.clientId}, error=${(error as Error).message}]`);
+      logger.error(`Client connection failed. [client_id=${this.clientId}, error=${(error as Error).message}]`);
       this.stats.connectionErrors++;
       return false;
     }
@@ -88,7 +91,7 @@ export class EmulatorClient {
   private async reconnectWebSocket(maxRetries: number = 3): Promise<boolean> {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        console.log(`Reconnecting WebSocket. [client_id=${this.clientId}, session_id=${this.sessionId}, attempt=${attempt + 1}]`);
+        logger.info(`Reconnecting WebSocket. [client_id=${this.clientId}, session_id=${this.sessionId}, attempt=${attempt + 1}]`);
 
         const wsUrl = `${this.config.haproxyWsUrl}/connection/websocket`;
         this.ws = await new Promise<WebSocket>((resolve, reject) => {
@@ -125,19 +128,19 @@ export class EmulatorClient {
 
         this.setupWebSocketHandlers();
 
-        console.log(`Reconnected successfully. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
+        logger.info(`Reconnected successfully. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
         this.stats.reconnectionCount++;
         return true;
 
       } catch (error) {
-        console.warn(`Reconnection attempt failed. [client_id=${this.clientId}, session_id=${this.sessionId}, attempt=${attempt + 1}, error=${(error as Error).message}]`);
+        logger.warning(`Reconnection attempt failed. [client_id=${this.clientId}, session_id=${this.sessionId}, attempt=${attempt + 1}, error=${(error as Error).message}]`);
         if (attempt < maxRetries - 1) {
           await new Promise(resolve => setTimeout(resolve, Math.min(2 ** attempt * 1000, 10000)));
         }
       }
     }
 
-    console.error(`Failed to reconnect after ${maxRetries} attempts. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
+    logger.error(`Failed to reconnect after ${maxRetries} attempts. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
     return false;
   }
 
@@ -169,19 +172,19 @@ export class EmulatorClient {
         // Ping/pong handled automatically by ws library at WebSocket protocol level
 
       } catch (error) {
-        console.error(`WebSocket message parse error. [client_id=${this.clientId}, session_id=${this.sessionId}, error=${(error as Error).message}]`);
+        logger.error(`WebSocket message parse error. [client_id=${this.clientId}, session_id=${this.sessionId}, error=${(error as Error).message}]`);
       }
     });
 
     this.ws.on('close', async () => {
-      console.warn(`WebSocket connection closed. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
+      logger.warning(`WebSocket connection closed. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
       if (this.shouldReconnect) {
         await this.reconnectWebSocket();
       }
     });
 
     this.ws.on('error', async (error) => {
-      console.error(`WebSocket error. [client_id=${this.clientId}, session_id=${this.sessionId}, error=${error.message}]`);
+      logger.error(`WebSocket error. [client_id=${this.clientId}, session_id=${this.sessionId}, error=${error.message}]`);
       this.stats.otherErrors++;
       if (this.shouldReconnect) {
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -252,10 +255,10 @@ export class EmulatorClient {
 
     } catch (error) {
       if ((error as Error).message.includes('timeout')) {
-        console.error(`Cycle timeout. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
+        logger.error(`Cycle timeout. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
         this.stats.timeoutErrors++;
       } else {
-        console.error(`Cycle execution error. [client_id=${this.clientId}, session_id=${this.sessionId}, error=${(error as Error).message}]`);
+        logger.error(`Cycle execution error. [client_id=${this.clientId}, session_id=${this.sessionId}, error=${(error as Error).message}]`);
         this.stats.otherErrors++;
       }
       return null;
@@ -273,7 +276,7 @@ export class EmulatorClient {
           method: 'DELETE'
         });
       } catch (error) {
-        console.warn(`Failed to close session. [session_id=${this.sessionId}, error=${(error as Error).message}]`);
+        logger.warning(`Failed to close session. [session_id=${this.sessionId}, error=${(error as Error).message}]`);
       }
     }
 
@@ -297,7 +300,7 @@ export class EmulatorClient {
       const result = await this.runCycle(question);
 
       if (result === null) {
-        console.warn(`Cycle failed. [client_id=${this.clientId}, session_id=${this.sessionId}, cycle=${cycle + 1}]`);
+        logger.warning(`Cycle failed. [client_id=${this.clientId}, session_id=${this.sessionId}, cycle=${cycle + 1}]`);
       }
     }
 

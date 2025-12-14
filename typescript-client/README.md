@@ -17,6 +17,15 @@ npm start -- --clients 10 --cycles 5
 
 Parameters: `--clients`, `--cycles`, `--length`, `--delay`
 
+## Logging
+
+All test runs automatically log to timestamped files in `logs/` directory:
+- Console output: stderr (for real-time monitoring)
+- File output: `logs/load_test_{clients}clients_{cycles}cycles_{timestamp}.log`
+- Format: `YYYY-MM-DD HH:MM:SS - module - LEVEL - message`
+
+Example log file: `logs/load_test_10clients_5cycles_20251214_092058.log`
+
 ## Key Differences from Python
 
 | Feature | Python | TypeScript |

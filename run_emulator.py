@@ -3,6 +3,8 @@ import asyncio
 import logging
 import signal
 import sys
+from datetime import datetime
+from pathlib import Path
 import uvloop
 
 from emulator.config import EmulatorConfig
@@ -11,10 +13,33 @@ from emulator.statistics import AggregatedStats
 
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+
+def setup_logging(num_clients: int, cycles: int):
+    logs_dir = Path("logs")
+    logs_dir.mkdir(exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = logs_dir / f"load_test_{num_clients}clients_{cycles}cycles_{timestamp}.log"
+
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(
+        logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    )
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(
+        logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    )
+
+    logging.basicConfig(
+        level=logging.INFO,
+        handlers=[file_handler, console_handler]
+    )
+
+    logger.info(f"Logging to file. [log_file=%s]", log_file)
+    return log_file
 
 
 class EmulatorOrchestrator:
@@ -96,6 +121,8 @@ def parse_args():
 
 async def main():
     args = parse_args()
+
+    setup_logging(args.clients, args.cycles)
 
     config = EmulatorConfig(
         num_clients=args.clients,

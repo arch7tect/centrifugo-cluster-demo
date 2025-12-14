@@ -1,6 +1,9 @@
 import type { EmulatorConfig } from './config';
 import { EmulatorClient } from './client';
 import { ClientStats, AggregatedStats } from './statistics';
+import { getLogger } from './logger';
+
+const logger = getLogger('emulator.orchestrator');
 
 export class EmulatorOrchestrator {
   private config: EmulatorConfig;
@@ -28,11 +31,11 @@ export class EmulatorOrchestrator {
       0
     );
 
-    console.log(`Test progress. [cycles=${totalCycles}, tokens=${totalTokens}, errors=${totalErrors}]`);
+    logger.info(`Test progress. [cycles=${totalCycles}, tokens=${totalTokens}, errors=${totalErrors}]`);
   }
 
   async run(): Promise<void> {
-    console.log(`Emulator starting. [num_clients=${this.config.numClients}, cycles_per_client=${this.config.cyclesPerClient}]`);
+    logger.info(`Emulator starting. [num_clients=${this.config.numClients}, cycles_per_client=${this.config.cyclesPerClient}]`);
 
     this.running = true;
     this.progressInterval = setInterval(() => {

@@ -358,6 +358,42 @@ logger.error(f"Failed to connect. [client_id=%s, error=%s]", client_id, exc)
 - Latency: p50: 13ms, p95: 44ms, p99: 54ms
 - Duration: 67.04s
 
+### 5000 Clients × 3 Cycles (15000 total requests)
+
+**Python Client**:
+- Completed: 3792/15000 (25.3% success)
+- Failed clients: 1830/5000 (36.6%)
+- Errors: 11,219
+- Reconnections: 61,567 (12.3 per client)
+- Throughput: 23.59 req/sec, 1060 tokens/sec
+- Request Latency: p50: 1.4s, p95: 51s, p99: 90s, max: 116s
+- Token Latency: p50: 2.8s, p95: 23s, p99: 84s
+- Duration: 635.72s (~10.6 minutes)
+
+**TypeScript Client**:
+- Completed: 3352/15000 (22.3% success)
+- Errors: 11,648
+- Reconnections: 59,933 (12.0 per client)
+- Throughput: 32.95 req/sec, 1473 tokens/sec, 7.36 cycles/sec
+- Request Latency: p50: 42ms, p95: 144ms, p99: 384ms, max: 37s
+- Token Latency: p50: 1.4s, p95: 12.9s, p99: 37.4s
+- Duration: 455.24s (~7.6 minutes)
+
+**Analysis**: At 5000 concurrent clients, both implementations reach capacity limits with ~77% failure rate, high latency, and massive reconnection activity. Only 22-25% of expected cycles completed. This represents the maximum sustainable load before severe degradation.
+
+**After Scaling to 32 Workers (16 per Granian instance)**:
+- Completed: 6145/15000 (41.0% success) - 62% improvement
+- Successful clients: 3549/5000 (71.0%)
+- Failed clients: 1451/5000 (29.0%)
+- Errors: 7,564 (-33% reduction)
+- Reconnections: 22,491 (4.5 per client, -63% reduction)
+- Throughput: 23.87 req/sec, 1315 tokens/sec (+24% improvement)
+- Request Latency: p50: 10s, p95: 43.8s, p99: 45s, max: 46.4s
+- Token Latency: p50: 10.7s, p95: 43.7s, p99: 56s
+- Duration: 537s (~9 minutes)
+
+**Scaling Analysis**: Increasing workers from 8 to 32 improved success rate and reduced errors/reconnections, but latency degraded significantly. The bottleneck shifted from Granian workers to Centrifugo/Redis capacity. Further horizontal scaling of Centrifugo nodes is needed for better performance at 5000+ concurrent clients.
+
 ### Key Implementation Features
 
 **Persistent HTTP Connection Pool**:
@@ -377,6 +413,11 @@ logger.error(f"Failed to connect. [client_id=%s, error=%s]", client_id, exc)
 - Application: 120s request timeout
 - Granian: 4 workers per instance (8 total)
 - Background task streaming for non-blocking token publishing
+
+**Capacity Limits**:
+- Optimal performance: Up to 500 concurrent clients (100% success, sub-second latency)
+- Degraded performance: 500-5000 clients (increasing failures and latency)
+- Capacity ceiling: ~5000 clients (36.6% failure rate, severe latency degradation)
 
 ## Cleanup
 
