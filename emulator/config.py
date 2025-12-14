@@ -18,9 +18,8 @@ class EmulatorConfig:
     response_length_words: int = 100
     token_delay_seconds: float = 0.01
 
-    max_concurrent_clients: int = 50
     connection_timeout: int = 30
-    request_timeout: int = 60
+    request_timeout: int = 120
 
     jwt_secret: str = "super-secret-jwt-key"
     centrifugo_api_key: str = "super-secret-api-key"
@@ -34,7 +33,6 @@ class EmulatorConfig:
             workers_per_granian=int(os.getenv('WORKERS_PER_GRANIAN', '2')),
             response_length_words=int(os.getenv('RESPONSE_LENGTH_WORDS', '100')),
             token_delay_seconds=float(os.getenv('TOKEN_DELAY_SECONDS', '0.01')),
-            max_concurrent_clients=int(os.getenv('MAX_CONCURRENT_CLIENTS', '50')),
             connection_timeout=int(os.getenv('CONNECTION_TIMEOUT', '30')),
-            request_timeout=int(os.getenv('REQUEST_TIMEOUT', '60')),
+            request_timeout=int(os.getenv('REQUEST_TIMEOUT', '120')),
         )

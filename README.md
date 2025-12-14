@@ -338,14 +338,45 @@ logger.error(f"Failed to connect. [client_id=%s, error=%s]", client_id, exc)
 - `logger.error()`: Error conditions
 - `logger.critical()`: Very serious errors
 
-## Testing Results
+## Load Testing Results
 
-Successfully tested with:
-- ✅ 1000 simultaneous clients (100% success rate)
-- ✅ Python: 10 clients × 5 cycles (50 total, 0 errors)
-- ✅ TypeScript: 10 clients × 5 cycles (50 total, 0 errors)
-- ✅ Throughput: ~2-3 req/sec, ~270 tokens/sec
-- ✅ Latency p50: ~2.6-2.8s, p95: ~4.7s, p99: ~4.8s
+### 500 Clients × 3 Cycles (1500 total requests)
+
+**Python Client**:
+- Completed: 1500/1500 (100% success)
+- Errors: 0
+- Reconnections: 436 (0.87 per client)
+- Throughput: 24.06 req/sec, 2406 tokens/sec
+- Latency: p50: 14ms, p95: 186ms, p99: 205ms
+- Duration: 62.34s
+
+**TypeScript Client**:
+- Completed: 1500/1500 (100% success)
+- Errors: 0
+- Reconnections: 766 (1.53 per client)
+- Throughput: 22.37 req/sec, 2237 tokens/sec
+- Latency: p50: 13ms, p95: 44ms, p99: 54ms
+- Duration: 67.04s
+
+### Key Implementation Features
+
+**Persistent HTTP Connection Pool**:
+- Max 100 keepalive connections, 200 total connections to Centrifugo
+- Eliminates connection overhead for high-volume token publishing
+- Enables 100% success rate at 500+ concurrent clients
+
+**Automatic WebSocket Reconnection**:
+- Detects connection drops and automatically reconnects
+- Exponential backoff: 1s, 2s, 4s between retry attempts
+- Up to 3 reconnection attempts per disconnection
+- Seamlessly resumes receiving messages after reconnection
+
+**Configuration**:
+- HAProxy timeouts: 300s (client/server), 3600s (tunnel)
+- Centrifugo: 300s stale/expired delays, 100 message history with 5min TTL
+- Application: 120s request timeout
+- Granian: 4 workers per instance (8 total)
+- Background task streaming for non-blocking token publishing
 
 ## Cleanup
 
@@ -358,41 +389,6 @@ docker-compose down -v
 
 # Remove images
 docker-compose down --rmi all
-```
-
-## Project Structure
-
-```
-.
-├── emulator/                       # Python application
-│   ├── config.py                   # Configuration management
-│   ├── emulator_client.py          # Python client implementation
-│   ├── llm_emulator.py             # Lorem ipsum generator
-│   ├── server.py                   # FastAPI server
-│   └── statistics.py               # Statistics classes
-├── typescript-client/              # TypeScript implementation
-│   ├── src/
-│   │   ├── client.ts               # TypeScript client
-│   │   ├── config.ts               # Configuration
-│   │   ├── main.ts                 # Entry point
-│   │   ├── orchestrator.ts         # Load test orchestrator
-│   │   └── statistics.ts           # Statistics classes
-│   ├── package.json                # Node.js dependencies
-│   └── README.md                   # TypeScript docs
-├── haproxy/
-│   └── haproxy.cfg                 # Load balancer config
-├── centrifugo/
-│   ├── config_node1.json           # Centrifugo node 1
-│   └── config_node2.json           # Centrifugo node 2
-├── docker-compose.yml              # Service orchestration
-├── Dockerfile                      # Granian FastAPI container
-├── run_emulator.py                 # Python orchestrator
-├── start_emulator.sh               # Complete startup script
-├── stop_emulator.sh                # Shutdown script
-├── status_emulator.sh              # Health check script
-├── logs_emulator.sh                # Log viewer script
-├── run_typescript_emulator.sh      # TypeScript runner
-└── README.md                       # This file
 ```
 
 ## License

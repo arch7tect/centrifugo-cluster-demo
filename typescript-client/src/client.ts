@@ -6,12 +6,14 @@ export class EmulatorClient {
   private clientId: number;
   private config: EmulatorConfig;
   private sessionId: string = '';
+  private token: string = '';
   private ws: WebSocket | null = null;
   private stats: ClientStats;
   private tokenQueue: string[] = [];
   private tokenResolvers: Array<() => void> = [];
   private doneResolve: (() => void) | null = null;
   private donePromise: Promise<void>;
+  private shouldReconnect: boolean = true;
 
   constructor(clientId: number, config: EmulatorConfig) {
     this.clientId = clientId;
@@ -24,14 +26,16 @@ export class EmulatorClient {
 
   async connect(): Promise<boolean> {
     try {
-      // Create session via REST API
-      const response = await fetch(`${this.config.haproxyHttpUrl}/api/sessions/create`, {
-        method: 'POST'
-      });
-      const data = await response.json();
-      this.sessionId = data.session_id;
-      const token = data.token;
-      this.stats.sessionId = this.sessionId;
+      // Create session via REST API (only on initial connect)
+      if (!this.sessionId) {
+        const response = await fetch(`${this.config.haproxyHttpUrl}/api/sessions/create`, {
+          method: 'POST'
+        });
+        const data = await response.json();
+        this.sessionId = data.session_id;
+        this.token = data.token;
+        this.stats.sessionId = this.sessionId;
+      }
 
       // Open WebSocket
       const wsUrl = `${this.config.haproxyWsUrl}/connection/websocket`;
@@ -57,7 +61,7 @@ export class EmulatorClient {
       // Send minimal connect command (required by Centrifugo)
       this.ws.send(JSON.stringify({
         id: 1,
-        connect: { token }
+        connect: { token: this.token }
       }));
 
       await new Promise<void>((resolve) => {
@@ -79,6 +83,62 @@ export class EmulatorClient {
       this.stats.connectionErrors++;
       return false;
     }
+  }
+
+  private async reconnectWebSocket(maxRetries: number = 3): Promise<boolean> {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        console.log(`Reconnecting WebSocket. [client_id=${this.clientId}, session_id=${this.sessionId}, attempt=${attempt + 1}]`);
+
+        const wsUrl = `${this.config.haproxyWsUrl}/connection/websocket`;
+        this.ws = await new Promise<WebSocket>((resolve, reject) => {
+          const ws = new WebSocket(wsUrl, {
+            protocol: 'json'
+          });
+          const timeout = setTimeout(() => {
+            reject(new Error('Connection timeout'));
+          }, this.config.connectionTimeout);
+
+          ws.on('open', () => {
+            clearTimeout(timeout);
+            resolve(ws);
+          });
+
+          ws.on('error', (error) => {
+            clearTimeout(timeout);
+            reject(error);
+          });
+        });
+
+        this.ws.send(JSON.stringify({
+          id: 1,
+          connect: { token: this.token }
+        }));
+
+        await new Promise<void>((resolve) => {
+          const handler = (data: Buffer) => {
+            this.ws?.off('message', handler);
+            resolve();
+          };
+          this.ws?.on('message', handler);
+        });
+
+        this.setupWebSocketHandlers();
+
+        console.log(`Reconnected successfully. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
+        this.stats.reconnectionCount++;
+        return true;
+
+      } catch (error) {
+        console.warn(`Reconnection attempt failed. [client_id=${this.clientId}, session_id=${this.sessionId}, attempt=${attempt + 1}, error=${(error as Error).message}]`);
+        if (attempt < maxRetries - 1) {
+          await new Promise(resolve => setTimeout(resolve, Math.min(2 ** attempt * 1000, 10000)));
+        }
+      }
+    }
+
+    console.error(`Failed to reconnect after ${maxRetries} attempts. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
+    return false;
   }
 
   private setupWebSocketHandlers(): void {
@@ -106,20 +166,27 @@ export class EmulatorClient {
           }
         }
 
-        // NO ping/pong handling - client never sends!
+        // Ping/pong handled automatically by ws library at WebSocket protocol level
 
       } catch (error) {
         console.error(`WebSocket message parse error. [client_id=${this.clientId}, session_id=${this.sessionId}, error=${(error as Error).message}]`);
       }
     });
 
-    this.ws.on('close', () => {
-      // Connection closed
+    this.ws.on('close', async () => {
+      console.warn(`WebSocket connection closed. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
+      if (this.shouldReconnect) {
+        await this.reconnectWebSocket();
+      }
     });
 
-    this.ws.on('error', (error) => {
+    this.ws.on('error', async (error) => {
       console.error(`WebSocket error. [client_id=${this.clientId}, session_id=${this.sessionId}, error=${error.message}]`);
       this.stats.otherErrors++;
+      if (this.shouldReconnect) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await this.reconnectWebSocket();
+      }
     });
   }
 
@@ -196,6 +263,9 @@ export class EmulatorClient {
   }
 
   async disconnect(): Promise<void> {
+    // Stop reconnection attempts
+    this.shouldReconnect = false;
+
     // Close session via REST API
     if (this.sessionId) {
       try {

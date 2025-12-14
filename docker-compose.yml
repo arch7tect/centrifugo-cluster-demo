@@ -65,7 +65,7 @@ services:
       --interface asgi
       --host 0.0.0.0
       --port 8001
-      --workers 2
+      --workers 4
     environment:
       CENTRIFUGO_API_URL: "http://haproxy:9001/api"
       CENTRIFUGO_API_KEY: "super-secret-api-key"
@@ -88,7 +88,7 @@ services:
       --interface asgi
       --host 0.0.0.0
       --port 8002
-      --workers 2
+      --workers 4
     environment:
       CENTRIFUGO_API_URL: "http://haproxy:9001/api"
       CENTRIFUGO_API_KEY: "super-secret-api-key"

@@ -2,35 +2,6 @@ import type { EmulatorConfig } from './config';
 import { EmulatorClient } from './client';
 import { ClientStats, AggregatedStats } from './statistics';
 
-class Semaphore {
-  private permits: number;
-  private queue: Array<() => void> = [];
-
-  constructor(permits: number) {
-    this.permits = permits;
-  }
-
-  async acquire(): Promise<void> {
-    if (this.permits > 0) {
-      this.permits--;
-      return Promise.resolve();
-    }
-
-    return new Promise((resolve) => {
-      this.queue.push(resolve);
-    });
-  }
-
-  release(): void {
-    this.permits++;
-    const resolve = this.queue.shift();
-    if (resolve) {
-      this.permits--;
-      resolve();
-    }
-  }
-}
-
 export class EmulatorOrchestrator {
   private config: EmulatorConfig;
   private clientsStats: ClientStats[] = [];
@@ -41,15 +12,10 @@ export class EmulatorOrchestrator {
     this.config = config;
   }
 
-  private async runClient(clientId: number, semaphore: Semaphore): Promise<void> {
-    await semaphore.acquire();
-    try {
-      const client = new EmulatorClient(clientId, this.config);
-      const stats = await client.run();
-      this.clientsStats.push(stats);
-    } finally {
-      semaphore.release();
-    }
+  private async runClient(clientId: number): Promise<void> {
+    const client = new EmulatorClient(clientId, this.config);
+    const stats = await client.run();
+    this.clientsStats.push(stats);
   }
 
   private logProgress(): void {
@@ -75,11 +41,10 @@ export class EmulatorOrchestrator {
       }
     }, 10000);
 
-    const semaphore = new Semaphore(this.config.maxConcurrentClients);
     const tasks: Promise<void>[] = [];
 
     for (let i = 0; i < this.config.numClients; i++) {
-      tasks.push(this.runClient(i, semaphore));
+      tasks.push(this.runClient(i));
     }
 
     await Promise.all(tasks);

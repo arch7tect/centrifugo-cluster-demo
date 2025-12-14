@@ -8,7 +8,6 @@ export interface EmulatorConfig {
   haproxyWsUrl: string;
   responseLengthWords: number;
   tokenDelaySeconds: number;
-  maxConcurrentClients: number;
   connectionTimeout: number;
   requestTimeout: number;
   jwtSecret: string;
@@ -32,9 +31,8 @@ export function loadConfig(): EmulatorConfig {
     haproxyWsUrl: process.env.HAPROXY_WS_URL || 'ws://localhost:9001',
     responseLengthWords: parseInt(getArg('--length', process.env.RESPONSE_LENGTH_WORDS || '100')),
     tokenDelaySeconds: parseFloat(getArg('--delay', process.env.TOKEN_DELAY_SECONDS || '0.01')),
-    maxConcurrentClients: parseInt(getArg('--max-concurrent', process.env.MAX_CONCURRENT_CLIENTS || '50')),
     connectionTimeout: parseInt(process.env.CONNECTION_TIMEOUT || '30') * 1000,
-    requestTimeout: parseInt(process.env.REQUEST_TIMEOUT || '60') * 1000,
+    requestTimeout: parseInt(process.env.REQUEST_TIMEOUT || '120') * 1000,
     jwtSecret: 'super-secret-jwt-key',
     centrifugoApiKey: 'super-secret-api-key'
   };

@@ -21,6 +21,7 @@ class ClientStats:
     connection_errors: int = 0
     timeout_errors: int = 0
     other_errors: int = 0
+    reconnection_count: int = 0
 
     start_time: float = 0
     end_time: float = 0
@@ -48,6 +49,7 @@ class AggregatedStats:
     successful_connections: int
     failed_connections: int
     total_errors: int
+    total_reconnections: int
 
     @classmethod
     def from_client_stats(cls, client_stats: list[ClientStats]) -> 'AggregatedStats':
@@ -58,7 +60,7 @@ class AggregatedStats:
                 request_latency_p50=0, request_latency_p95=0,
                 request_latency_p99=0, request_latency_max=0,
                 token_latency_p50=0, token_latency_p95=0, token_latency_p99=0,
-                successful_connections=0, failed_connections=0, total_errors=0
+                successful_connections=0, failed_connections=0, total_errors=0, total_reconnections=0
             )
 
         all_request_latencies = []
@@ -73,12 +75,14 @@ class AggregatedStats:
         end = max(s.end_time for s in client_stats if s.end_time > 0)
         duration = end - start if end > start else 0
 
+        total_reconnections = 0
         for stats in client_stats:
             all_request_latencies.extend(stats.request_latencies)
             all_token_latencies.extend(stats.token_latencies)
             total_tokens += stats.total_tokens_received
             total_requests += stats.total_requests
             total_errors += stats.connection_errors + stats.timeout_errors + stats.other_errors
+            total_reconnections += stats.reconnection_count
 
             if stats.cycles_completed > 0:
                 successful += 1
@@ -104,7 +108,8 @@ class AggregatedStats:
             token_latency_p99=float(np.percentile(tok_lat_ms, 99)),
             successful_connections=successful,
             failed_connections=failed,
-            total_errors=total_errors
+            total_errors=total_errors,
+            total_reconnections=total_reconnections
         )
 
     def print_report(self):
@@ -128,6 +133,6 @@ class AggregatedStats:
                    self.token_latency_p50, self.token_latency_p95, self.token_latency_p99)
         logger.info("")
         logger.info("CONNECTIONS:")
-        logger.info("  [successful=%s, failed=%s, total_errors=%s]",
-                   self.successful_connections, self.failed_connections, self.total_errors)
+        logger.info("  [successful=%s, failed=%s, total_errors=%s, reconnections=%s]",
+                   self.successful_connections, self.failed_connections, self.total_errors, self.total_reconnections)
         logger.info("=" * 80)

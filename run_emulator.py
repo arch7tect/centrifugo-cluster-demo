@@ -39,12 +39,11 @@ class EmulatorOrchestrator:
                     total_cycles, total_tokens, total_errors
                 )
 
-    async def run_client(self, client_id: int, semaphore: asyncio.Semaphore):
-        async with semaphore:
-            client = EmulatorClient(client_id, self.config)
-            stats = await client.run()
-            self.clients_stats.append(stats)
-            return stats
+    async def run_client(self, client_id: int):
+        client = EmulatorClient(client_id, self.config)
+        stats = await client.run()
+        self.clients_stats.append(stats)
+        return stats
 
     async def run(self):
         logger.info(f"Emulator starting. [num_clients=%s, cycles_per_client=%s]",
@@ -53,12 +52,9 @@ class EmulatorOrchestrator:
         # Start progress logging
         self.progress_task = asyncio.create_task(self.log_progress())
 
-        # Create semaphore to limit concurrent connections
-        semaphore = asyncio.Semaphore(self.config.max_concurrent_clients)
-
-        # Launch all clients
+        # Launch all clients concurrently
         tasks = [
-            self.run_client(client_id, semaphore)
+            self.run_client(client_id)
             for client_id in range(self.config.num_clients)
         ]
 
@@ -95,8 +91,6 @@ def parse_args():
                        help='Response length in words (default: 100)')
     parser.add_argument('--delay', type=float, default=0.01,
                        help='Token delay in seconds (default: 0.01)')
-    parser.add_argument('--max-concurrent', type=int, default=50,
-                       help='Max concurrent clients (default: 50)')
     return parser.parse_args()
 
 
@@ -110,7 +104,6 @@ async def main():
         workers_per_granian=args.workers,
         response_length_words=args.length,
         token_delay_seconds=args.delay,
-        max_concurrent_clients=args.max_concurrent,
     )
 
     orchestrator = EmulatorOrchestrator(config)

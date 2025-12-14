@@ -9,6 +9,7 @@ export class ClientStats {
   connectionErrors: number = 0;
   timeoutErrors: number = 0;
   otherErrors: number = 0;
+  reconnectionCount: number = 0;
   startTime: number = 0;
   endTime: number = 0;
 
@@ -19,22 +20,23 @@ export class ClientStats {
 }
 
 export class AggregatedStats {
-  totalClients: number;
-  totalCycles: number;
-  totalDuration: number;
-  requestsPerSecond: number;
-  tokensPerSecond: number;
-  cyclesPerSecond: number;
-  requestLatencyP50: number;
-  requestLatencyP95: number;
-  requestLatencyP99: number;
-  requestLatencyMax: number;
-  tokenLatencyP50: number;
-  tokenLatencyP95: number;
-  tokenLatencyP99: number;
-  successfulConnections: number;
-  failedConnections: number;
-  totalErrors: number;
+  totalClients!: number;
+  totalCycles!: number;
+  totalDuration!: number;
+  requestsPerSecond!: number;
+  tokensPerSecond!: number;
+  cyclesPerSecond!: number;
+  requestLatencyP50!: number;
+  requestLatencyP95!: number;
+  requestLatencyP99!: number;
+  requestLatencyMax!: number;
+  tokenLatencyP50!: number;
+  tokenLatencyP95!: number;
+  tokenLatencyP99!: number;
+  successfulConnections!: number;
+  failedConnections!: number;
+  totalErrors!: number;
+  totalReconnections!: number;
 
   constructor(data: Partial<AggregatedStats>) {
     Object.assign(this, data);
@@ -58,7 +60,8 @@ export class AggregatedStats {
         tokenLatencyP99: 0,
         successfulConnections: 0,
         failedConnections: 0,
-        totalErrors: 0
+        totalErrors: 0,
+        totalReconnections: 0
       });
     }
 
@@ -67,6 +70,7 @@ export class AggregatedStats {
     let totalTokens = 0;
     let totalRequests = 0;
     let totalErrors = 0;
+    let totalReconnections = 0;
     let successful = 0;
     let failed = 0;
 
@@ -81,6 +85,7 @@ export class AggregatedStats {
       totalTokens += stats.totalTokensReceived;
       totalRequests += stats.totalRequests;
       totalErrors += stats.connectionErrors + stats.timeoutErrors + stats.otherErrors;
+      totalReconnections += stats.reconnectionCount;
 
       if (stats.connectionErrors > 0) {
         failed++;
@@ -107,7 +112,8 @@ export class AggregatedStats {
       tokenLatencyP99: percentile(allTokenLatencies, 99) * 1000,
       successfulConnections: successful,
       failedConnections: failed,
-      totalErrors
+      totalErrors,
+      totalReconnections
     });
   }
 
@@ -127,7 +133,7 @@ export class AggregatedStats {
     console.log(`  [p50=${this.tokenLatencyP50.toFixed(2)}, p95=${this.tokenLatencyP95.toFixed(2)}, p99=${this.tokenLatencyP99.toFixed(2)}]`);
     console.log('');
     console.log('CONNECTIONS:');
-    console.log(`  [successful=${this.successfulConnections}, failed=${this.failedConnections}, total_errors=${this.totalErrors}]`);
+    console.log(`  [successful=${this.successfulConnections}, failed=${this.failedConnections}, total_errors=${this.totalErrors}, reconnections=${this.totalReconnections}]`);
     console.log('================================================================================');
     console.log('');
   }

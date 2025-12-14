@@ -6,7 +6,6 @@ CLIENTS=${1:-10}
 CYCLES=${2:-5}
 LENGTH=${3:-100}
 DELAY=${4:-0.01}
-MAX_CONCURRENT=${5:-50}
 
 echo "=========================================="
 echo "LLM Emulator - Starting All Components"
@@ -18,7 +17,6 @@ echo "  Clients: $CLIENTS"
 echo "  Cycles per client: $CYCLES"
 echo "  Response length: $LENGTH words"
 echo "  Token delay: ${DELAY}s"
-echo "  Max concurrent: $MAX_CONCURRENT"
 echo ""
 
 echo "[1/5] Checking dependencies..."
@@ -107,8 +105,7 @@ uv run python run_emulator.py \
     --clients "$CLIENTS" \
     --cycles "$CYCLES" \
     --length "$LENGTH" \
-    --delay "$DELAY" \
-    --max-concurrent "$MAX_CONCURRENT"
+    --delay "$DELAY"
 
 echo ""
 echo "=========================================="

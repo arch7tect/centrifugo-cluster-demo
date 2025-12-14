@@ -18,12 +18,14 @@ class EmulatorClient:
         self.client_id = client_id
         self.config = config
         self.session_id: Optional[str] = None
+        self.token: Optional[str] = None
         self.ws: Optional[websockets.WebSocketClientProtocol] = None
         self.http_client: Optional[httpx.AsyncClient] = None
         self.stats = ClientStats(client_id=client_id, session_id="")
         self.token_queue: asyncio.Queue = asyncio.Queue()
         self.done_event = asyncio.Event()
         self.receive_task: Optional[asyncio.Task] = None
+        self.should_reconnect = True
 
     async def connect(self):
         try:
@@ -33,12 +35,13 @@ class EmulatorClient:
                 timeout=self.config.request_timeout
             )
 
-            # Create session via REST API
-            response = await self.http_client.post("/api/sessions/create")
-            data = response.json()
-            self.session_id = data["session_id"]
-            token = data["token"]
-            self.stats.session_id = self.session_id
+            # Create session via REST API (only on initial connect)
+            if not self.session_id:
+                response = await self.http_client.post("/api/sessions/create")
+                data = response.json()
+                self.session_id = data["session_id"]
+                self.token = data["token"]
+                self.stats.session_id = self.session_id
 
             # Open WebSocket
             ws_url = f"{self.config.haproxy_ws_url}/connection/websocket"
@@ -50,7 +53,7 @@ class EmulatorClient:
             # Send minimal connect command (required by Centrifugo)
             await self.ws.send(json.dumps({
                 "id": 1,
-                "connect": {"token": token}
+                "connect": {"token": self.token}
             }))
             await self.ws.recv()
 
@@ -63,32 +66,73 @@ class EmulatorClient:
             self.stats.connection_errors += 1
             return False
 
+    async def reconnect_websocket(self, max_retries=3):
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Reconnecting WebSocket. [client_id=%s, session_id=%s, attempt=%s]",
+                           self.client_id, self.session_id, attempt + 1)
+
+                ws_url = f"{self.config.haproxy_ws_url}/connection/websocket"
+                self.ws = await asyncio.wait_for(
+                    websockets.connect(ws_url, subprotocols=["json"]),
+                    timeout=self.config.connection_timeout
+                )
+
+                await self.ws.send(json.dumps({
+                    "id": 1,
+                    "connect": {"token": self.token}
+                }))
+                await self.ws.recv()
+
+                logger.info(f"Reconnected successfully. [client_id=%s, session_id=%s]",
+                           self.client_id, self.session_id)
+                self.stats.reconnection_count += 1
+                return True
+
+            except Exception as e:
+                logger.warning(f"Reconnection attempt failed. [client_id=%s, session_id=%s, attempt=%s, error=%s]",
+                             self.client_id, self.session_id, attempt + 1, e)
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(min(2 ** attempt, 10))
+
+        logger.error(f"Failed to reconnect after %s attempts. [client_id=%s, session_id=%s]",
+                    max_retries, self.client_id, self.session_id)
+        return False
+
     async def receive_tokens(self):
-        try:
-            while True:
-                message = await self.ws.recv()
-                data = json.loads(message)
-                logger.debug(f"WebSocket message received. [client_id=%s, session_id=%s]", self.client_id, self.session_id)
+        while self.should_reconnect:
+            try:
+                while True:
+                    message = await self.ws.recv()
+                    data = json.loads(message)
+                    logger.debug(f"WebSocket message received. [client_id=%s, session_id=%s]", self.client_id, self.session_id)
 
-                # Handle push messages
-                if "push" in data:
-                    pub = data["push"].get("pub", {})
-                    push_data = pub.get("data", {})
+                    # Handle push messages
+                    if "push" in data:
+                        pub = data["push"].get("pub", {})
+                        push_data = pub.get("data", {})
 
-                    if "token" in push_data:
-                        await self.token_queue.put(push_data["token"])
-                        self.stats.total_tokens_received += 1
+                        if "token" in push_data:
+                            await self.token_queue.put(push_data["token"])
+                            self.stats.total_tokens_received += 1
 
-                    if push_data.get("done"):
-                        self.done_event.set()
+                        if push_data.get("done"):
+                            self.done_event.set()
 
-                # NO ping/pong handling - client never sends!
+                    # Ping/pong handled automatically by websockets library
 
-        except websockets.exceptions.ConnectionClosed:
-            logger.debug(f"WebSocket connection closed. [client_id=%s, session_id=%s]", self.client_id, self.session_id)
-        except Exception as e:
-            logger.error(f"WebSocket receive error. [client_id=%s, session_id=%s, error=%s]", self.client_id, self.session_id, e)
-            self.stats.other_errors += 1
+            except websockets.exceptions.ConnectionClosed:
+                logger.warning(f"WebSocket connection closed. [client_id=%s, session_id=%s]", self.client_id, self.session_id)
+                if self.should_reconnect:
+                    if not await self.reconnect_websocket():
+                        break
+            except Exception as e:
+                logger.error(f"WebSocket receive error. [client_id=%s, session_id=%s, error=%s]", self.client_id, self.session_id, e)
+                self.stats.other_errors += 1
+                if self.should_reconnect:
+                    await asyncio.sleep(1)
+                    if not await self.reconnect_websocket():
+                        break
 
     async def run_cycle(self, question: str):
         try:
@@ -139,6 +183,9 @@ class EmulatorClient:
             return None
 
     async def disconnect(self):
+        # Stop reconnection attempts
+        self.should_reconnect = False
+
         # Close session via REST API
         if self.http_client and self.session_id:
             try:
