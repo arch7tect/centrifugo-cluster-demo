@@ -386,7 +386,7 @@ logger.error(f"Failed to connect. [client_id=%s, error=%s]", client_id, exc)
 - HAProxy timeouts: 300s (client/server), 3600s (tunnel)
 - Centrifugo: 300s stale/expired delays, 100 message history with 5min TTL
 - Application: 120s request timeout
-- Granian: 4 workers per instance (8 total)
+- Granian: 4 instances with 6 workers each (24 total workers)
 - Background task streaming for non-blocking token publishing
 
 **Capacity Limits**:
