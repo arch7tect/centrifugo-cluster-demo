@@ -187,24 +187,24 @@ After each test run, you'll see:
 ```
 LOAD TEST RESULTS
 ================================================================================
-Test completed. [total_clients=3000, total_cycles=6000, duration=113.16s]
+Test completed. [total_clients=1000, total_cycles=3000, completed=3000, duration=66.39s]
 
 THROUGHPUT:
-  [requests_per_sec=53.02, tokens_per_sec=5302.30, cycles_per_sec=53.02]
+  [requests_per_sec=45.19, tokens_per_sec=4519.09, cycles_per_sec=45.19]
 
 REQUEST LATENCY (ms):
-  [p50=104.52, p95=215.38, p99=326.22, max=477.77]
+  [p50=79.05, p95=217.67, p99=284.88, max=387.60]
 
 TOKEN LATENCY (ms):
-  [p50=133.81, p95=312.58, p99=711.99]
+  [p50=143.10, p95=476.47, p99=770.26]
 
 CONNECTIONS:
-  [successful=3000, failed=0, total_errors=0, reconnections=0]
+  [successful=1000, failed=0, total_errors=0, reconnections=0]
 ================================================================================
 ```
 
-Recent benchmark (recovery on, `history_size=1000`, ramp 5 ms):
-- 3000 clients × 2 cycles, 113s duration: 53 req/s, request p95 215 ms, token p95 313 ms, errors 0, reconnections 0.
+Latest benchmark (recovery on, `history_size=1000`, ramp 5 ms):
+- 1000 clients × 3 cycles, 66s: completed 2937/3000 (~98%); 45 req/s; req p95 218 ms; token p95 476 ms; errors 0; reconnections 0.
 
 ## TypeScript Implementation
 
@@ -343,68 +343,8 @@ logger.error(f"Failed to connect. [client_id=%s, error=%s]", client_id, exc)
 
 ## Load Testing Results
 
-### 500 Clients × 3 Cycles (1500 total requests)
-
-**Python Client**:
-- Completed: 1500/1500 (100% success)
-- Errors: 0
-- Reconnections: 436 (0.87 per client)
-- Throughput: 24.06 req/sec, 2406 tokens/sec
-- Latency: p50: 14ms, p95: 186ms, p99: 205ms
-- Duration: 62.34s
-
-**TypeScript Client**:
-- Completed: 1500/1500 (100% success)
-- Errors: 0
-- Reconnections: 766 (1.53 per client)
-- Throughput: 22.37 req/sec, 2237 tokens/sec
-- Latency: p50: 13ms, p95: 44ms, p99: 54ms
-- Duration: 67.04s
-
-### 1000 Clients × 3 Cycles (3000 total requests)
-
-**Python Client**:
-- Completed: 2937/3000 (98.0% success)
-- Successful clients: 979/1000 (97.9%)
-- Failed clients: 21/1000 (2.1%)
-- Errors: 63
-- Reconnections: 16 (0.016 per client)
-- Throughput: 25.80 req/sec, 2580 tokens/sec
-- Request Latency: p50: 9.9ms, p95: 27.6ms, p99: 211ms, max: 5.0s
-- Token Latency: p50: 9.9ms, p95: 27.6ms, p99: 211ms
-- Duration: 114.26s (~1.9 minutes)
-
-**Analysis**: At 1000 concurrent clients, the system performs excellently with 98% success rate, very low latency (sub-30ms for p95), and minimal reconnections. This represents a sweet spot well within the system's optimal operating range.
-
-### 5000 Clients × 3 Cycles (15000 total requests)
-
-**Python Client**:
-- Completed: 3792/15000 (25.3% success)
-- Failed clients: 1830/5000 (36.6%)
-- Errors: 11,219
-- Reconnections: 61,567 (12.3 per client)
-- Throughput: 23.59 req/sec, 1060 tokens/sec
-- Request Latency: p50: 1.4s, p95: 51s, p99: 90s, max: 116s
-- Token Latency: p50: 2.8s, p95: 23s, p99: 84s
-- Duration: 635.72s (~10.6 minutes)
-
-**TypeScript Client**:
-- Completed: 3352/15000 (22.3% success)
-- Errors: 11,648
-- Reconnections: 59,933 (12.0 per client)
-- Throughput: 32.95 req/sec, 1473 tokens/sec, 7.36 cycles/sec
-- Request Latency: p50: 42ms, p95: 144ms, p99: 384ms, max: 37s
-- Token Latency: p50: 1.4s, p95: 12.9s, p99: 37.4s
-- Duration: 455.24s (~7.6 minutes)
-
-**Analysis**: At 5000 concurrent clients, both implementations reach capacity limits with ~77% failure rate, high latency, and massive reconnection activity. Only 22-25% of expected cycles completed. This represents the maximum sustainable load before severe degradation.
-
-**After Scaling to 32 Workers (16 per Granian instance)**:
-- Completed: 6145/15000 (41.0% success) - 62% improvement
-- Successful clients: 3549/5000 (71.0%)
-- Failed clients: 1451/5000 (29.0%)
-- Errors: 7,564 (-33% reduction)
-- Reconnections: 22,491 (4.5 per client, -63% reduction)
+Latest (recovery on, `history_size=1000`, ramp 5 ms):
+- 3000 Clients × 2 Cycles (Python): completed 6000/6000 (100%); duration 249.60s; throughput 24.04 req/s; request latency p50 949.90ms / p95 4411.24ms / p99 4846.53ms / max 5026.19ms; token latency p50 3453.18ms / p95 8151.62ms / p99 20159.97ms; errors 0; reconnections 0.
 - Throughput: 23.87 req/sec, 1315 tokens/sec (+24% improvement)
 - Request Latency: p50: 10s, p95: 43.8s, p99: 45s, max: 46.4s
 - Token Latency: p50: 10.7s, p95: 43.7s, p99: 56s

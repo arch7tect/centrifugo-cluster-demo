@@ -11,8 +11,6 @@ CYCLES=${CYCLES:-5}
 LENGTH=${LENGTH:-100}
 DELAY=${DELAY:-0.01}
 RAMP_MS=${RAMP_MS:-5}
-SERVERS=${SERVERS:-4}          # Granian instances
-WORKERS=${WORKERS:-6}          # Workers per Granian
 SAMPLE_INTERVAL=${SAMPLE_INTERVAL:-5}
 DISABLE_RECOVERY=${DISABLE_RECOVERY:-0} # set to 1 to disable Centrifugo recovery (no history) for this run
 
@@ -126,7 +124,7 @@ stop_sampler() {
 }
 
 log "Diagnostic run folder: $RUN_DIR"
-log "Config: clients=$CLIENTS cycles=$CYCLES length=$LENGTH delay=$DELAY ramp_ms=$RAMP_MS servers=$SERVERS workers=$WORKERS sample=${SAMPLE_INTERVAL}s disable_recovery=$DISABLE_RECOVERY"
+log "Config: clients=$CLIENTS cycles=$CYCLES length=$LENGTH delay=$DELAY ramp_ms=$RAMP_MS sample=${SAMPLE_INTERVAL}s disable_recovery=$DISABLE_RECOVERY"
 
 if [ "$DISABLE_RECOVERY" -eq 1 ]; then
   prepare_no_recovery_configs
@@ -145,8 +143,6 @@ log "Starting load test..."
 uv run python run_emulator.py \
   --clients "$CLIENTS" \
   --cycles "$CYCLES" \
-  --servers "$SERVERS" \
-  --workers "$WORKERS" \
   --length "$LENGTH" \
   --delay "$DELAY" \
   --ramp-delay-ms "$RAMP_MS" \
