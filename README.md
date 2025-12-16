@@ -31,8 +31,8 @@ Available in both **Python** and **TypeScript** implementations!
 Python/TypeScript Clients
     ↓
 HAProxy Load Balancer
-    ├─→ HTTP (port 9000) → Granian FastAPI servers (2 instances)
-    └─→ WebSocket (port 9001) → Centrifugo cluster (2 nodes)
+    ├─→ HTTP (port 9000) → Granian FastAPI servers (4 instances)
+    └─→ WebSocket (port 9001) → Centrifugo cluster (3 nodes)
             ↓
         Redis (pub/sub backend)
 ```
@@ -130,11 +130,9 @@ uv run python run_emulator.py --clients 10 --cycles 5
 # Available options
 --clients N          Number of clients (default: 10)
 --cycles N           Cycles per client (default: 5)
---servers N          Number of Granian instances (default: 2)
---workers N          Workers per Granian instance (default: 2)
 --length N           Response length in words (default: 100)
 --delay SECONDS      Token delay in seconds (default: 0.01)
---max-concurrent N   Max concurrent clients (default: 50)
+--ramp-delay-ms N    Delay between client startups in ms (default: 0)
 ```
 
 #### TypeScript Client
@@ -148,7 +146,6 @@ npm start -- --clients 10 --cycles 5
 --cycles N           Cycles per client (default: 5)
 --length N           Response length in words (default: 100)
 --delay SECONDS      Token delay in seconds (default: 0.01)
---max-concurrent N   Max concurrent clients (default: 50)
 ```
 
 For detailed TypeScript implementation notes, see [typescript-client/README.md](typescript-client/README.md)
@@ -162,7 +159,9 @@ export NUM_CLIENTS=50
 export CYCLES_PER_CLIENT=10
 export RESPONSE_LENGTH_WORDS=150
 export TOKEN_DELAY_SECONDS=0.005
-export MAX_CONCURRENT_CLIENTS=100
+export CLIENT_RAMP_DELAY_MS=5
+export CONNECTION_TIMEOUT=300
+export REQUEST_TIMEOUT=300
 
 uv run python run_emulator.py
 ```
@@ -174,6 +173,7 @@ uv run python run_emulator.py
 | HAProxy Stats | http://localhost:8404/stats | Load balancer statistics |
 | Centrifugo Node 1 | http://localhost:8100/ | Admin UI (admin/admin) |
 | Centrifugo Node 2 | http://localhost:8200/ | Admin UI (admin/admin) |
+| Centrifugo Node 3 | http://localhost:8300/ | Admin UI (admin/admin) |
 | FastAPI Health | http://localhost:9000/health | API health check |
 | Session Create | http://localhost:9000/api/sessions/create | Create new session (POST) |
 | Session Close | http://localhost:9000/api/sessions/{id} | Close session (DELETE) |
@@ -187,21 +187,24 @@ After each test run, you'll see:
 ```
 LOAD TEST RESULTS
 ================================================================================
-Test completed. [total_clients=10, total_cycles=50, duration=18.55s]
+Test completed. [total_clients=3000, total_cycles=6000, duration=113.16s]
 
 THROUGHPUT:
-  [requests_per_sec=2.70, tokens_per_sec=269.61, cycles_per_sec=2.70]
+  [requests_per_sec=53.02, tokens_per_sec=5302.30, cycles_per_sec=53.02]
 
 REQUEST LATENCY (ms):
-  [p50=2789.42, p95=4701.31, p99=4752.32, max=4758.55]
+  [p50=104.52, p95=215.38, p99=326.22, max=477.77]
 
 TOKEN LATENCY (ms):
-  [p50=2789.43, p95=4701.33, p99=4752.34]
+  [p50=133.81, p95=312.58, p99=711.99]
 
 CONNECTIONS:
-  [successful=10, failed=0, total_errors=0]
+  [successful=3000, failed=0, total_errors=0, reconnections=0]
 ================================================================================
 ```
+
+Recent benchmark (recovery on, `history_size=1000`, ramp 5 ms):
+- 3000 clients × 2 cycles, 113s duration: 53 req/s, request p95 215 ms, token p95 313 ms, errors 0, reconnections 0.
 
 ## TypeScript Implementation
 
@@ -358,6 +361,21 @@ logger.error(f"Failed to connect. [client_id=%s, error=%s]", client_id, exc)
 - Latency: p50: 13ms, p95: 44ms, p99: 54ms
 - Duration: 67.04s
 
+### 1000 Clients × 3 Cycles (3000 total requests)
+
+**Python Client**:
+- Completed: 2937/3000 (98.0% success)
+- Successful clients: 979/1000 (97.9%)
+- Failed clients: 21/1000 (2.1%)
+- Errors: 63
+- Reconnections: 16 (0.016 per client)
+- Throughput: 25.80 req/sec, 2580 tokens/sec
+- Request Latency: p50: 9.9ms, p95: 27.6ms, p99: 211ms, max: 5.0s
+- Token Latency: p50: 9.9ms, p95: 27.6ms, p99: 211ms
+- Duration: 114.26s (~1.9 minutes)
+
+**Analysis**: At 1000 concurrent clients, the system performs excellently with 98% success rate, very low latency (sub-30ms for p95), and minimal reconnections. This represents a sweet spot well within the system's optimal operating range.
+
 ### 5000 Clients × 3 Cycles (15000 total requests)
 
 **Python Client**:
@@ -415,9 +433,9 @@ logger.error(f"Failed to connect. [client_id=%s, error=%s]", client_id, exc)
 - Background task streaming for non-blocking token publishing
 
 **Capacity Limits**:
-- Optimal performance: Up to 500 concurrent clients (100% success, sub-second latency)
-- Degraded performance: 500-5000 clients (increasing failures and latency)
-- Capacity ceiling: ~5000 clients (36.6% failure rate, severe latency degradation)
+- Optimal performance: Up to 1000 concurrent clients (98-100% success, sub-30ms latency)
+- Degraded performance: 1000-5000 clients (increasing failures and latency)
+- Capacity ceiling: ~5000 clients (59% failure rate with 32 workers, severe latency degradation)
 
 ## Cleanup
 
