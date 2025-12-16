@@ -115,7 +115,21 @@ async def create_session():
 
 @app.delete("/api/sessions/{session_id}")
 async def close_session(session_id: str):
-    logger.info(f"Session closed. [session_id=%s]", session_id)
+    channel = f"session:{session_id}"
+
+    try:
+        await http_client.post(
+            CENTRIFUGO_API_URL,
+            json={
+                "method": "history_remove",
+                "params": {"channel": channel}
+            },
+            headers={"Authorization": f"apikey {CENTRIFUGO_API_KEY}"}
+        )
+        logger.info(f"Session closed and channel history removed. [session_id=%s, channel=%s]", session_id, channel)
+    except Exception as e:
+        logger.warning(f"Failed to remove channel history. [session_id=%s, channel=%s, error=%s]", session_id, channel, e)
+
     return {"status": "closed"}
 
 

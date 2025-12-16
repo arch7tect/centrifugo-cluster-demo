@@ -85,8 +85,9 @@ HAProxy Load Balancer
 
 ### Session Closure
 1. Client calls `DELETE /api/sessions/{session_id}` via HAProxy
-2. Client closes WebSocket connection
-3. No server-side session storage required (stateless)
+2. FastAPI removes channel history from Centrifugo (memory cleanup)
+3. Client closes WebSocket connection
+4. No server-side session storage required (stateless)
 
 ## Usage
 
