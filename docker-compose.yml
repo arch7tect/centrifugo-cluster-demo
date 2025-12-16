@@ -3,49 +3,118 @@ services:
     image: redis:7-alpine
     container_name: redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8192M
+        reservations:
+          cpus: '2.0'
+          memory: 4096M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
 
   centrifugo_node1:
-    image: centrifugo/centrifugo:v5
+    image: centrifugo/centrifugo:v6
     container_name: centrifugo_node1
     restart: unless-stopped
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     ports:
       - "8100:8100"
+      - "9003:9003"
     volumes:
-      - ./centrifugo/config_node1.json:/centrifugo/config.json:ro
+      - ./centrifugo/config.json:/centrifugo/config.json:ro
     command: >
       centrifugo
       --config=/centrifugo/config.json
-      --port=8100
-      --admin
-    environment:
-      CENTRIFUGO_SECRET: "super-secret-jwt-key"
-      CENTRIFUGO_API_KEY: "super-secret-api-key"
+      --http_server.port=8100
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4096M
+        reservations:
+          cpus: '2.0'
+          memory: 2048M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8100/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   centrifugo_node2:
-    image: centrifugo/centrifugo:v5
+    image: centrifugo/centrifugo:v6
     container_name: centrifugo_node2
     restart: unless-stopped
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     ports:
       - "8200:8200"
+      - "9004:9004"
     volumes:
-      - ./centrifugo/config_node2.json:/centrifugo/config.json:ro
+      - ./centrifugo/config.json:/centrifugo/config.json:ro
     command: >
       centrifugo
       --config=/centrifugo/config.json
-      --port=8200
-      --admin
-    environment:
-      CENTRIFUGO_SECRET: "super-secret-jwt-key"
-      CENTRIFUGO_API_KEY: "super-secret-api-key"
+      --http_server.port=8200
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4096M
+        reservations:
+          cpus: '2.0'
+          memory: 2048M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8200/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  centrifugo_node3:
+    image: centrifugo/centrifugo:v6
+    container_name: centrifugo_node3
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "8300:8300"
+    volumes:
+      - ./centrifugo/config.json:/centrifugo/config.json:ro
+    command: >
+      centrifugo
+      --config=/centrifugo/config.json
+      --http_server.port=8300
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4096M
+        reservations:
+          cpus: '2.0'
+          memory: 2048M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8300/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   granian1:
     build:
@@ -54,8 +123,12 @@ services:
     container_name: granian1
     restart: unless-stopped
     depends_on:
-      - centrifugo_node1
-      - centrifugo_node2
+      centrifugo_node1:
+        condition: service_healthy
+      centrifugo_node2:
+        condition: service_healthy
+      centrifugo_node3:
+        condition: service_healthy
     ports:
       - "8001:8001"
     volumes:
@@ -65,10 +138,25 @@ services:
       --interface asgi
       --host 0.0.0.0
       --port 8001
-      --workers 16
+      --workers 6
+      --backlog 2048
     environment:
       CENTRIFUGO_API_URL: "http://haproxy:9001/api"
       CENTRIFUGO_API_KEY: "super-secret-api-key"
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4096M
+        reservations:
+          cpus: '2.0'
+          memory: 2048M
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8001/health\")' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   granian2:
     build:
@@ -77,8 +165,12 @@ services:
     container_name: granian2
     restart: unless-stopped
     depends_on:
-      - centrifugo_node1
-      - centrifugo_node2
+      centrifugo_node1:
+        condition: service_healthy
+      centrifugo_node2:
+        condition: service_healthy
+      centrifugo_node3:
+        condition: service_healthy
     ports:
       - "8002:8002"
     volumes:
@@ -88,26 +180,149 @@ services:
       --interface asgi
       --host 0.0.0.0
       --port 8002
-      --workers 16
+      --workers 6
+      --backlog 2048
     environment:
       CENTRIFUGO_API_URL: "http://haproxy:9001/api"
       CENTRIFUGO_API_KEY: "super-secret-api-key"
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4096M
+        reservations:
+          cpus: '2.0'
+          memory: 2048M
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8002/health\")' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  granian3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: granian3
+    restart: unless-stopped
+    depends_on:
+      centrifugo_node1:
+        condition: service_healthy
+      centrifugo_node2:
+        condition: service_healthy
+      centrifugo_node3:
+        condition: service_healthy
+    ports:
+      - "8003:8003"
+    volumes:
+      - .:/app
+    command: >
+      granian emulator.server:app
+      --interface asgi
+      --host 0.0.0.0
+      --port 8003
+      --workers 6
+      --backlog 2048
+    environment:
+      CENTRIFUGO_API_URL: "http://haproxy:9001/api"
+      CENTRIFUGO_API_KEY: "super-secret-api-key"
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4096M
+        reservations:
+          cpus: '2.0'
+          memory: 2048M
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8003/health\")' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  granian4:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: granian4
+    restart: unless-stopped
+    depends_on:
+      centrifugo_node1:
+        condition: service_healthy
+      centrifugo_node2:
+        condition: service_healthy
+      centrifugo_node3:
+        condition: service_healthy
+    ports:
+      - "8004:8004"
+    volumes:
+      - .:/app
+    command: >
+      granian emulator.server:app
+      --interface asgi
+      --host 0.0.0.0
+      --port 8004
+      --workers 6
+      --backlog 2048
+    environment:
+      CENTRIFUGO_API_URL: "http://haproxy:9001/api"
+      CENTRIFUGO_API_KEY: "super-secret-api-key"
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4096M
+        reservations:
+          cpus: '2.0'
+          memory: 2048M
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8004/health\")' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   haproxy:
     image: haproxy:3.1-alpine
     container_name: haproxy
     restart: unless-stopped
     depends_on:
-      - granian1
-      - granian2
-      - centrifugo_node1
-      - centrifugo_node2
+      granian1:
+        condition: service_healthy
+      granian2:
+        condition: service_healthy
+      granian3:
+        condition: service_healthy
+      granian4:
+        condition: service_healthy
+      centrifugo_node1:
+        condition: service_healthy
+      centrifugo_node2:
+        condition: service_healthy
+      centrifugo_node3:
+        condition: service_healthy
     ports:
       - "9000:9000"
       - "9001:9001"
       - "8404:8404"
+      - "9999:9999"
     volumes:
       - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '8.0'
+          memory: 4096M
+        reservations:
+          cpus: '4.0'
+          memory: 3072M
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1:8404/stats || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
 volumes:
   redis_data:

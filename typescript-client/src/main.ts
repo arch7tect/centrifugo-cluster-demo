@@ -20,6 +20,9 @@ async function main() {
 
   await orchestrator.run();
   Logger.closeLogging();
+
+  // Force exit - Centrifuge SDK may keep event loop alive even after disconnect
+  process.exit(0);
 }
 
 main().catch((error) => {

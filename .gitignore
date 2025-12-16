@@ -51,6 +51,7 @@ build/
 # Logs
 *.log
 logs/
+.diagnostic/
 
 # Redis data
 redis_data/
@@ -68,3 +69,4 @@ htmlcov/
 *.tmp
 *.bak
 /CLAUDE.md
+/AGENTS.md

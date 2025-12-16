@@ -39,10 +39,19 @@ class SessionCreateResponse(BaseModel):
 async def startup():
     global http_client
     http_client = httpx.AsyncClient(
-        limits=httpx.Limits(max_keepalive_connections=100, max_connections=200),
-        timeout=5.0
+        limits=httpx.Limits(
+            max_keepalive_connections=500,
+            max_connections=1000,
+            keepalive_expiry=30.0
+        ),
+        timeout=httpx.Timeout(
+            connect=5.0,
+            read=10.0,
+            write=10.0,
+            pool=5.0
+        )
     )
-    logger.info("HTTP client initialized. [max_keepalive=100, max_connections=200]")
+    logger.info("HTTP client initialized. [max_keepalive=500, max_connections=1000, keepalive_expiry=30s]")
 
 
 @app.on_event("shutdown")

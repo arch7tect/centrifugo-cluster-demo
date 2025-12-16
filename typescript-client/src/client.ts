@@ -1,4 +1,4 @@
-import WebSocket from 'ws';
+import { Centrifuge, PublicationContext, Subscription } from 'centrifuge';
 import type { EmulatorConfig } from './config';
 import { ClientStats } from './statistics';
 import { getLogger } from './logger';
@@ -10,13 +10,13 @@ export class EmulatorClient {
   private config: EmulatorConfig;
   private sessionId: string = '';
   private token: string = '';
-  private ws: WebSocket | null = null;
+  private centrifuge: Centrifuge | null = null;
+  private subscription: Subscription | null = null;
   private stats: ClientStats;
   private tokenQueue: string[] = [];
   private tokenResolvers: Array<() => void> = [];
   private doneResolve: (() => void) | null = null;
   private donePromise: Promise<void>;
-  private shouldReconnect: boolean = true;
 
   constructor(clientId: number, config: EmulatorConfig) {
     this.clientId = clientId;
@@ -40,45 +40,71 @@ export class EmulatorClient {
         this.stats.sessionId = this.sessionId;
       }
 
-      // Open WebSocket
       const wsUrl = `${this.config.haproxyWsUrl}/connection/websocket`;
-      this.ws = await new Promise<WebSocket>((resolve, reject) => {
-        const ws = new WebSocket(wsUrl, {
-          protocol: 'json'
-        });
-        const timeout = setTimeout(() => {
-          reject(new Error('Connection timeout'));
-        }, this.config.connectionTimeout);
 
-        ws.on('open', () => {
-          clearTimeout(timeout);
-          resolve(ws);
-        });
-
-        ws.on('error', (error) => {
-          clearTimeout(timeout);
-          reject(error);
-        });
+      this.centrifuge = new Centrifuge(wsUrl, {
+        token: this.token,
       });
 
-      // Send minimal connect command (required by Centrifugo)
-      this.ws.send(JSON.stringify({
-        id: 1,
-        connect: { token: this.token }
-      }));
-
-      await new Promise<void>((resolve) => {
-        const handler = (data: Buffer) => {
-          this.ws?.off('message', handler);
-          resolve();
-        };
-        this.ws?.on('message', handler);
+      this.centrifuge.on('connected', (ctx) => {
+        logger.info(`Client connected successfully. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
       });
 
-      // Server already subscribed us via API, so NO subscribe command needed!
-      this.setupWebSocketHandlers();
+      this.centrifuge.on('disconnected', (ctx) => {
+        logger.warning(`Client disconnected. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
+        this.stats.reconnectionCount++;
+      });
 
-      logger.info(`Client connected successfully. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
+      this.centrifuge.on('error', (ctx) => {
+        logger.error(`Client error. [client_id=${this.clientId}, session_id=${this.sessionId}, error=${ctx.error?.message}]`);
+        this.stats.otherErrors++;
+      });
+
+      this.centrifuge.on('publication', (ctx: PublicationContext) => {
+        const data = ctx.data;
+        logger.debug(`Server publication received. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
+
+        if (data.token) {
+          this.tokenQueue.push(data.token);
+          this.stats.totalTokensReceived++;
+
+          if (this.tokenResolvers.length > 0) {
+            const resolve = this.tokenResolvers.shift();
+            resolve?.();
+          }
+        }
+
+        if (data.done && this.doneResolve) {
+          this.doneResolve();
+        }
+      });
+
+      this.centrifuge.connect();
+
+      const channel = `session:${this.sessionId}`;
+      this.subscription = this.centrifuge.newSubscription(channel);
+
+      this.subscription.on('publication', (ctx: PublicationContext) => {
+        const data = ctx.data;
+        logger.debug(`Publication received. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
+
+        if (data.token) {
+          this.tokenQueue.push(data.token);
+          this.stats.totalTokensReceived++;
+
+          if (this.tokenResolvers.length > 0) {
+            const resolve = this.tokenResolvers.shift();
+            resolve?.();
+          }
+        }
+
+        if (data.done && this.doneResolve) {
+          this.doneResolve();
+        }
+      });
+
+      this.subscription.subscribe();
+
       return true;
 
     } catch (error) {
@@ -86,111 +112,6 @@ export class EmulatorClient {
       this.stats.connectionErrors++;
       return false;
     }
-  }
-
-  private async reconnectWebSocket(maxRetries: number = 3): Promise<boolean> {
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        logger.info(`Reconnecting WebSocket. [client_id=${this.clientId}, session_id=${this.sessionId}, attempt=${attempt + 1}]`);
-
-        const wsUrl = `${this.config.haproxyWsUrl}/connection/websocket`;
-        this.ws = await new Promise<WebSocket>((resolve, reject) => {
-          const ws = new WebSocket(wsUrl, {
-            protocol: 'json'
-          });
-          const timeout = setTimeout(() => {
-            reject(new Error('Connection timeout'));
-          }, this.config.connectionTimeout);
-
-          ws.on('open', () => {
-            clearTimeout(timeout);
-            resolve(ws);
-          });
-
-          ws.on('error', (error) => {
-            clearTimeout(timeout);
-            reject(error);
-          });
-        });
-
-        this.ws.send(JSON.stringify({
-          id: 1,
-          connect: { token: this.token }
-        }));
-
-        await new Promise<void>((resolve) => {
-          const handler = (data: Buffer) => {
-            this.ws?.off('message', handler);
-            resolve();
-          };
-          this.ws?.on('message', handler);
-        });
-
-        this.setupWebSocketHandlers();
-
-        logger.info(`Reconnected successfully. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
-        this.stats.reconnectionCount++;
-        return true;
-
-      } catch (error) {
-        logger.warning(`Reconnection attempt failed. [client_id=${this.clientId}, session_id=${this.sessionId}, attempt=${attempt + 1}, error=${(error as Error).message}]`);
-        if (attempt < maxRetries - 1) {
-          await new Promise(resolve => setTimeout(resolve, Math.min(2 ** attempt * 1000, 10000)));
-        }
-      }
-    }
-
-    logger.error(`Failed to reconnect after ${maxRetries} attempts. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
-    return false;
-  }
-
-  private setupWebSocketHandlers(): void {
-    if (!this.ws) return;
-
-    this.ws.on('message', (data: Buffer) => {
-      try {
-        const message = JSON.parse(data.toString());
-
-        if (message.push?.pub?.data) {
-          const pushData = message.push.pub.data;
-
-          if (pushData.token) {
-            this.tokenQueue.push(pushData.token);
-            this.stats.totalTokensReceived++;
-
-            if (this.tokenResolvers.length > 0) {
-              const resolve = this.tokenResolvers.shift();
-              resolve?.();
-            }
-          }
-
-          if (pushData.done && this.doneResolve) {
-            this.doneResolve();
-          }
-        }
-
-        // Ping/pong handled automatically by ws library at WebSocket protocol level
-
-      } catch (error) {
-        logger.error(`WebSocket message parse error. [client_id=${this.clientId}, session_id=${this.sessionId}, error=${(error as Error).message}]`);
-      }
-    });
-
-    this.ws.on('close', async () => {
-      logger.warning(`WebSocket connection closed. [client_id=${this.clientId}, session_id=${this.sessionId}]`);
-      if (this.shouldReconnect) {
-        await this.reconnectWebSocket();
-      }
-    });
-
-    this.ws.on('error', async (error) => {
-      logger.error(`WebSocket error. [client_id=${this.clientId}, session_id=${this.sessionId}, error=${error.message}]`);
-      this.stats.otherErrors++;
-      if (this.shouldReconnect) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        await this.reconnectWebSocket();
-      }
-    });
   }
 
   private async waitForToken(): Promise<string> {
@@ -266,8 +187,19 @@ export class EmulatorClient {
   }
 
   async disconnect(): Promise<void> {
-    // Stop reconnection attempts
-    this.shouldReconnect = false;
+    // Unsubscribe from channel
+    if (this.subscription) {
+      this.subscription.unsubscribe();
+      this.subscription.removeAllListeners();
+      this.subscription = null;
+    }
+
+    // Disconnect Centrifuge client
+    if (this.centrifuge) {
+      this.centrifuge.removeAllListeners();
+      this.centrifuge.disconnect();
+      this.centrifuge = null;
+    }
 
     // Close session via REST API
     if (this.sessionId) {
@@ -278,12 +210,6 @@ export class EmulatorClient {
       } catch (error) {
         logger.warning(`Failed to close session. [session_id=${this.sessionId}, error=${(error as Error).message}]`);
       }
-    }
-
-    // Close WebSocket
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
     }
   }
 
