@@ -1,9 +1,6 @@
 export interface EmulatorConfig {
   numClients: number;
   cyclesPerClient: number;
-  numGranianInstances: number;
-  workersPerGranian: number;
-  numCentrifugoNodes: number;
   haproxyHttpUrl: string;
   haproxyWsUrl: string;
   responseLengthWords: number;
@@ -24,9 +21,6 @@ export function loadConfig(): EmulatorConfig {
   return {
     numClients: parseInt(getArg('--clients', process.env.NUM_CLIENTS || '10')),
     cyclesPerClient: parseInt(getArg('--cycles', process.env.CYCLES_PER_CLIENT || '5')),
-    numGranianInstances: parseInt(getArg('--servers', process.env.NUM_GRANIAN_INSTANCES || '2')),
-    workersPerGranian: parseInt(getArg('--workers', process.env.WORKERS_PER_GRANIAN || '2')),
-    numCentrifugoNodes: 2,
     haproxyHttpUrl: process.env.HAPROXY_HTTP_URL || 'http://localhost:9000',
     haproxyWsUrl: process.env.HAPROXY_WS_URL || 'ws://localhost:9001',
     responseLengthWords: parseInt(getArg('--length', process.env.RESPONSE_LENGTH_WORDS || '100')),

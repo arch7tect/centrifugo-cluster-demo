@@ -77,11 +77,12 @@ class EmulatorOrchestrator:
         # Start progress logging
         self.progress_task = asyncio.create_task(self.log_progress())
 
-        # Launch all clients concurrently
-        tasks = [
-            self.run_client(client_id)
-            for client_id in range(self.config.num_clients)
-        ]
+        # Launch clients with optional ramp delay to avoid thundering herd
+        tasks = []
+        for client_id in range(self.config.num_clients):
+            tasks.append(asyncio.create_task(self.run_client(client_id)))
+            if self.config.client_ramp_delay_ms > 0 and client_id + 1 < self.config.num_clients:
+                await asyncio.sleep(self.config.client_ramp_delay_ms / 1000.0)
 
         try:
             await asyncio.gather(*tasks)
@@ -108,14 +109,12 @@ def parse_args():
                        help='Number of clients (default: 10)')
     parser.add_argument('--cycles', type=int, default=5,
                        help='Cycles per client (default: 5)')
-    parser.add_argument('--servers', type=int, default=2,
-                       help='Number of Granian instances (default: 2)')
-    parser.add_argument('--workers', type=int, default=2,
-                       help='Workers per Granian instance (default: 2)')
     parser.add_argument('--length', type=int, default=100,
                        help='Response length in words (default: 100)')
     parser.add_argument('--delay', type=float, default=0.01,
                        help='Token delay in seconds (default: 0.01)')
+    parser.add_argument('--ramp-delay-ms', type=int, default=0,
+                       help='Delay in milliseconds between client startups (default: 0)')
     return parser.parse_args()
 
 
@@ -127,10 +126,9 @@ async def main():
     config = EmulatorConfig(
         num_clients=args.clients,
         cycles_per_client=args.cycles,
-        num_granian_instances=args.servers,
-        workers_per_granian=args.workers,
         response_length_words=args.length,
         token_delay_seconds=args.delay,
+        client_ramp_delay_ms=args.ramp_delay_ms,
     )
 
     orchestrator = EmulatorOrchestrator(config)
